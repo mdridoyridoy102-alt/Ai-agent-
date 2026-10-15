@@ -1,0 +1,105 @@
+name: Android APK Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check Project Structure (Groovy or Kotlin DSL)
+        run: |
+          echo "Verifying Android project structure..."
+          
+          # Check for settings file (.gradle.kts or .gradle)
+          if [ ! -f settings.gradle.kts ] && [ ! -f settings.gradle ]; then
+            echo "::error::Neither settings.gradle.kts nor settings.gradle was found in root!"
+            exit 1
+          fi
+
+          # Check for root build file (.gradle.kts or .gradle)
+          if [ ! -f build.gradle.kts ] && [ ! -f build.gradle ]; then
+            echo "::error::Neither build.gradle.kts nor build.gradle was found in root!"
+            exit 1
+          fi
+
+          # Check for app module directory
+          if [ ! -d app ]; then
+            echo "::error::'app' directory/module not found in root!"
+            exit 1
+          fi
+
+          echo "Project structure verified successfully."
+
+      - name: Set Up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set Up Gradle Environment
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Ensure Gradle Wrapper & Permissions
+        run: |
+          # If gradlew is missing, generate it automatically
+          if [ ! -f gradlew ]; then
+            echo "WARNING: gradlew missing. Generating wrapper using system gradle..."
+            gradle wrapper || {
+              echo "::error::Failed to generate gradle wrapper."
+              exit 1
+            }
+          fi
+
+          # Ensure execution permission
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
+      - name: Build Debug APK
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
+        run: |
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Locate and Verify APK
+        id: locate_apk
+        run: |
+          APK_FILE=$(find app/build/outputs/apk/debug -maxdepth 2 -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK_FILE" ] || [ ! -f "$APK_FILE" ]; then
+            echo "::error::No debug APK found in app/build/outputs/apk/debug/"
+            exit 1
+          fi
+
+          echo "Found APK at: $APK_FILE"
+          echo "apk_path=$APK_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ai-agent-debug-apk
+          path: ${{ steps.locate_apk.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 7
