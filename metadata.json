@@ -1,0 +1,6 @@
+{
+  "name": "Coding to AI",
+  "description": "Full-stack AI development platform to turn specifications into running, editable code with live preview, API & database workbenches, and checkpoints.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
